@@ -1,10 +1,9 @@
 # BlueBubbles Channel for Claude Code
 
-An iMessage channel plugin for [Claude Code](https://code.claude.com/) using [BlueBubbles](https://bluebubbles.app/) as the bridge. Send and receive iMessages from a running Claude Code session.
+An iMessage channel plugin for Claude Code using [BlueBubbles](https://bluebubbles.app/) as the bridge. Send and receive iMessages from a running Claude Code session.
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com/docs/en/quickstart) v2.1.80+
 - [Bun](https://bun.sh)
 - [BlueBubbles Server](https://bluebubbles.app/) running on a Mac with iMessage
 
@@ -21,7 +20,7 @@ An iMessage channel plugin for [Claude Code](https://code.claude.com/) using [Bl
 
    ```
    BLUEBUBBLE_PASS=your-server-password
-   BLUEBUBBLE_HOST=localhost
+   BLUEBUBBLE_HOST=your-server-name
    BLUEBUBBLE_PORT=1234
    BLUEBUBBLE_CONVERSATION=15551234567
    ```
@@ -63,6 +62,3 @@ An iMessage channel plugin for [Claude Code](https://code.claude.com/) using [Bl
 | `BLUEBUBBLE_PORT` | no | `1234` | BlueBubbles server port |
 | `BLUEBUBBLE_CONVERSATION` | yes | | Phone number (digits only, with country code) |
 
-## License
-
-Apache-2.0
