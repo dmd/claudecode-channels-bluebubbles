@@ -1,0 +1,9 @@
+{
+  "name": "bluebubbles",
+  "description": "iMessage channel for Claude Code via BlueBubbles",
+  "version": "0.0.1",
+  "author": {
+    "name": "dmd"
+  },
+  "repository": "https://github.com/dmd/claudecode-channels-bluebubbles"
+}
