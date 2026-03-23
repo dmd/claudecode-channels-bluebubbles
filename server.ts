@@ -125,29 +125,32 @@ await mcp.connect(new StdioServerTransport())
 
 // ── Polling for inbound messages ────────────────────────────────────────────
 
-// Track the timestamp of the last message we've seen so we only deliver new ones.
-// Seed with "now" so we don't replay history on startup.
-let lastSeenTs = Date.now()
+// Track seen message GUIDs to never deliver the same message twice.
+// Also track a timestamp cursor so we only fetch recent messages.
+const seenGuids = new Set<string>()
+let afterTs = Date.now()
 
 async function pollOnce(): Promise<void> {
   try {
-    // Fetch recent messages from the specific chat, sorted ascending
     const data = await bbFetch(
-      `/chat/${encodeURIComponent(CHAT_GUID)}/message?limit=10&sort=ASC&after=${lastSeenTs}`
+      `/chat/${encodeURIComponent(CHAT_GUID)}/message?limit=10&sort=ASC&after=${afterTs}`
     )
     const messages: any[] = data.data ?? []
     for (const msg of messages) {
-      // Skip our own outbound messages
-      if (msg.isFromMe) {
-        // Still advance the timestamp so we don't re-fetch these
-        if (msg.dateCreated > lastSeenTs) lastSeenTs = msg.dateCreated
-        continue
-      }
-      // Skip non-text messages (reactions, group events, etc.)
-      if (!msg.text?.trim()) {
-        if (msg.dateCreated > lastSeenTs) lastSeenTs = msg.dateCreated
-        continue
-      }
+      const guid: string = msg.guid ?? ''
+
+      // Advance cursor regardless of message type
+      if (msg.dateCreated > afterTs) afterTs = msg.dateCreated
+
+      // Skip if we've already seen this exact message
+      if (guid && seenGuids.has(guid)) continue
+
+      // Remember it
+      if (guid) seenGuids.add(guid)
+
+      // Skip our own outbound messages and non-text messages
+      if (msg.isFromMe) continue
+      if (!msg.text?.trim()) continue
 
       const sender = msg.handle?.address ?? 'unknown'
       await mcp.notification({
@@ -156,14 +159,19 @@ async function pollOnce(): Promise<void> {
           content: msg.text,
           meta: {
             chat_id: CHAT_GUID,
-            message_id: msg.guid ?? '',
+            message_id: guid,
             user: sender,
             ts: new Date(msg.dateCreated).toISOString(),
           },
         },
       })
+    }
 
-      if (msg.dateCreated > lastSeenTs) lastSeenTs = msg.dateCreated
+    // Keep the set from growing forever — prune old entries once it's large
+    if (seenGuids.size > 200) {
+      const keep = [...seenGuids].slice(-100)
+      seenGuids.clear()
+      for (const g of keep) seenGuids.add(g)
     }
   } catch (err) {
     process.stderr.write(`bluebubbles poll error: ${err instanceof Error ? err.message : err}\n`)
