@@ -41,8 +41,13 @@ if (!BB_CONVERSATION) {
 }
 
 const BASE_URL = `http://${BB_HOST}:${BB_PORT}/api/v1`
-const CHAT_GUID = `iMessage;-;+${BB_CONVERSATION}`
 const POLL_INTERVAL_MS = 5_000
+
+// The service prefix on a chat GUID is not stable — the same conversation can be
+// stored as `iMessage;-;+1555…` or `any;-;+1555…` depending on how Messages has
+// normalized it. Resolve it from the server instead of assuming, and re-resolve
+// if it ever changes out from under us (a stale GUID makes every poll 404).
+let CHAT_GUID = `iMessage;-;+${BB_CONVERSATION}`
 
 // ── BlueBubbles API helpers ─────────────────────────────────────────────────
 
@@ -52,6 +57,31 @@ async function bbFetch(path: string, opts?: RequestInit): Promise<any> {
   const res = await fetch(url, opts)
   if (!res.ok) throw new Error(`BlueBubbles ${path}: ${res.status} ${await res.text()}`)
   return res.json()
+}
+
+async function resolveChatGuid(): Promise<boolean> {
+  try {
+    const data = await bbFetch('/chat/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 200, offset: 0 }),
+    })
+    const want = `+${BB_CONVERSATION}`
+    const match = (data.data ?? []).find(
+      (c: any) => c.chatIdentifier === want || c.guid?.endsWith(`;-;${want}`)
+    )
+    if (match?.guid && match.guid !== CHAT_GUID) {
+      process.stderr.write(`bluebubbles channel: chat guid ${CHAT_GUID} -> ${match.guid}\n`)
+      CHAT_GUID = match.guid
+      return true
+    }
+    if (!match) process.stderr.write(`bluebubbles channel: no chat found for ${want}\n`)
+  } catch (err) {
+    process.stderr.write(
+      `bluebubbles channel: guid resolve failed: ${err instanceof Error ? err.message : err}\n`
+    )
+  }
+  return false
 }
 
 async function sendMessage(text: string): Promise<string> {
@@ -66,6 +96,8 @@ async function sendMessage(text: string): Promise<string> {
 }
 
 // ── MCP Server ──────────────────────────────────────────────────────────────
+
+await resolveChatGuid()
 
 const mcp = new Server(
   { name: 'bluebubbles', version: '0.0.1' },
@@ -174,7 +206,11 @@ async function pollOnce(): Promise<void> {
       for (const g of keep) seenGuids.add(g)
     }
   } catch (err) {
-    process.stderr.write(`bluebubbles poll error: ${err instanceof Error ? err.message : err}\n`)
+    const msg = err instanceof Error ? err.message : String(err)
+    process.stderr.write(`bluebubbles poll error: ${msg}\n`)
+    // A 404 means the chat GUID went stale — re-resolve so we self-heal instead
+    // of silently 404ing on every poll forever.
+    if (msg.includes('404')) await resolveChatGuid()
   }
 }
 
